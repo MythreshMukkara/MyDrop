@@ -2,30 +2,33 @@ from pynput import keyboard
 from PyQt6.QtCore import QObject, pyqtSignal
 
 class GlobalInputListener(QObject):
-    # This 'signal' allows the background thread to talk to the GUI
-    hotkey_triggered = pyqtSignal(str)
+    # Emits "TOGGLE" or "ACCEPT"
+    hotkey_triggered = pyqtSignal(str) 
 
     def __init__(self):
         super().__init__()
         self.listener = None
 
     def start(self):
-        # Define the hotkey combination
-        # <ctrl>+<alt>+m = Send Mode
-        hotkeys = {
-            '<ctrl>+<alt>+m': self.on_activate_send_mode
+        """Starts listening for global hotkeys"""
+        # Define the hotkey mapping
+        # <cmd> maps to the Windows Key on Windows
+        self.hotkeys = {
+            '<ctrl>+<alt>+m': self.on_toggle,
+            '<cmd>+<alt>+m': self.on_accept
         }
-
-        # Start the listener in a non-blocking way
-        self.listener = keyboard.GlobalHotKeys(hotkeys)
+        
+        self.listener = keyboard.GlobalHotKeys(self.hotkeys)
         self.listener.start()
-        print("[Core] Global Listener started. Press Ctrl+Alt+m to test.")
-
-    def on_activate_send_mode(self):
-        print("[Input] Hotkey detected!")
-        # Emit the signal to the Main Thread
-        self.hotkey_triggered.emit("SEND_MODE")
 
     def stop(self):
         if self.listener:
             self.listener.stop()
+
+    def on_toggle(self):
+        """Ctrl+Alt+m pressed"""
+        self.hotkey_triggered.emit("TOGGLE")
+
+    def on_accept(self):
+        """Win+Alt+M pressed"""
+        self.hotkey_triggered.emit("ACCEPT")

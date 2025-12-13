@@ -45,29 +45,30 @@ class TransferManager(QObject):
     def _server_worker(self, filepath):
         print(f"[Transfer] Server starting for {filepath}...")
         try:
-            # Create Server Socket
             self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            
-            # --- FIX: Allow Port Reuse ---
             self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            
+            # --- FIX: Set Timeout (20 Seconds) ---
+            self.server_socket.settimeout(20) 
             
             try:
                 self.server_socket.bind(('0.0.0.0', TRANSFER_PORT))
             except OSError:
-                print("[Transfer] Port still busy. Retrying...")
+                print("[Transfer] Port busy. Waiting...")
                 time.sleep(1)
                 self.server_socket.bind(('0.0.0.0', TRANSFER_PORT))
 
             self.server_socket.listen(1)
+            print("[Transfer] Waiting for receiver (20s timeout)...")
             
-            print("[Transfer] Waiting for receiver...")
-            
-            # This line BLOCKS until a receiver connects
-            # If we call self.server_socket.close() from another thread, this throws an error
+            # This will now crash if nobody connects in 20s
             client_socket, addr = self.server_socket.accept()
+            
+            # Reset timeout for the actual file transfer (we don't want it cutting off mid-file)
+            client_socket.settimeout(None) 
+            
             print(f"[Transfer] Connected to {addr}")
             
-            # Send the file
             filesize = os.path.getsize(filepath)
             sent_bytes = 0
             
@@ -76,7 +77,6 @@ class TransferManager(QObject):
                     data = f.read(BUFFER_SIZE)
                     if not data: break
                     client_socket.sendall(data)
-                    
                     sent_bytes += len(data)
                     percent = int((sent_bytes / filesize) * 100)
                     self.transfer_progress.emit(percent)
@@ -84,10 +84,14 @@ class TransferManager(QObject):
             print("[Transfer] File sent successfully.")
             self.transfer_complete.emit("File Sent Successfully!")
             client_socket.close()
-            
+
+        # --- FIX: Handle Timeout ---
+        except socket.timeout:
+            print("[Transfer] Timeout: No receiver connected.")
+            self.transfer_complete.emit("No Receiver Found (Timeout)")
+
         except OSError:
-            # This happens when we force-close the socket (Normal behavior for cancellation)
-            print("[Transfer] Server stopped (likely cancelled by new gesture).")
+            print("[Transfer] Server stopped (likely cancelled).")
             
         except Exception as e:
             print(f"[Transfer] Server Error: {e}")

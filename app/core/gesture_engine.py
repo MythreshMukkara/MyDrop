@@ -69,56 +69,70 @@ class GestureEngine(QObject):
         # Open Camera
         self.cap = cv2.VideoCapture(0)
         
-        while self.running and self.cap.isOpened():
-            success, image = self.cap.read()
-            if not success:
-                continue
+        while self.running:
+            # SAFETY CHECK 1: Is camera still existing?
+            if self.cap is None or not self.cap.isOpened():
+                break
 
-            # Performance: Mark writable false for MediaPipe processing
-            image.flags.writeable = False
-            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            results = self.hands.process(image)
-
-            # --- Logic ---
-            current_gesture = "UNKNOWN"
-            
-            if results.multi_hand_landmarks:
-                # We found a hand!
-                hand_landmarks = results.multi_hand_landmarks[0]
+            try:
+                # SAFETY CHECK 2: Catch the specific MSMF error here
+                success, image = self.cap.read()
                 
-                # Check for Fist vs Open
-                # (Logic: Are fingertips below knuckles?)
-                index_tip_y = hand_landmarks.landmark[self.mp_hands.HandLandmark.INDEX_FINGER_TIP].y
-                index_pip_y = hand_landmarks.landmark[self.mp_hands.HandLandmark.INDEX_FINGER_PIP].y
-                middle_tip_y = hand_landmarks.landmark[self.mp_hands.HandLandmark.MIDDLE_FINGER_TIP].y
-                middle_pip_y = hand_landmarks.landmark[self.mp_hands.HandLandmark.MIDDLE_FINGER_PIP].y
+                if not success:
+                    # If read fails, wait a bit and try again (don't crash)
+                    time.sleep(0.01)
+                    continue
 
-                if (index_tip_y > index_pip_y and middle_tip_y > middle_pip_y):
-                    current_gesture = "FIST"
-                else:
-                    current_gesture = "OPEN"
+                # Performance: Mark writable false
+                image.flags.writeable = False
+                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                results = self.hands.process(image)
 
-                # --- State Machine (The Magic) ---
-                if current_gesture != self.last_gesture:
+                # --- Logic ---
+                current_gesture = "UNKNOWN"
+                
+                if results.multi_hand_landmarks:
+                    hand_landmarks = results.multi_hand_landmarks[0]
                     
-                    # 1. Detect GRAB (Open -> Fist)
-                    if self.last_gesture == "OPEN" and current_gesture == "FIST":
-                        if not self.is_holding:
-                            self.is_holding = True
-                            print("[Core] GRAB Detected!")
-                            self.gesture_detected.emit("GRAB")
+                    index_tip_y = hand_landmarks.landmark[self.mp_hands.HandLandmark.INDEX_FINGER_TIP].y
+                    index_pip_y = hand_landmarks.landmark[self.mp_hands.HandLandmark.INDEX_FINGER_PIP].y
+                    middle_tip_y = hand_landmarks.landmark[self.mp_hands.HandLandmark.MIDDLE_FINGER_TIP].y
+                    middle_pip_y = hand_landmarks.landmark[self.mp_hands.HandLandmark.MIDDLE_FINGER_PIP].y
 
-                    # 2. Detect DROP (Fist -> Open)
-                    elif self.last_gesture == "FIST" and current_gesture == "OPEN":
-                        if self.is_holding:
-                            self.is_holding = False
-                            print("[Core] DROP Detected!")
-                            self.gesture_detected.emit("DROP")
-                    
-                    self.last_gesture = current_gesture
+                    if (index_tip_y > index_pip_y and middle_tip_y > middle_pip_y):
+                        current_gesture = "FIST"
+                    else:
+                        current_gesture = "OPEN"
 
-            # Small sleep to save CPU
-            time.sleep(0.01)
+                    if current_gesture != self.last_gesture:
+                        if self.last_gesture == "OPEN" and current_gesture == "FIST":
+                            if not self.is_holding:
+                                self.is_holding = True
+                                print("[Core] GRAB Detected!")
+                                self.gesture_detected.emit("GRAB")
+
+                        elif self.last_gesture == "FIST" and current_gesture == "OPEN":
+                            if self.is_holding:
+                                self.is_holding = False
+                                print("[Core] DROP Detected!")
+                                self.gesture_detected.emit("DROP")
+                        
+                        self.last_gesture = current_gesture
+
+                time.sleep(0.01)
+
+            except cv2.error:
+                # If OpenCV crashes mid-read, just exit the loop
+                print("[Core] Camera released safely.")
+                break
+            except Exception as e:
+                print(f"[Core] Loop Error: {e}")
+                break
+
+        # Cleanup
+        if self.cap:
+            self.cap.release()
+        print("[Core] Gesture Loop Stopped.")
 
         # Cleanup when loop ends
         self.cap.release()
