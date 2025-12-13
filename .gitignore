@@ -1,0 +1,17 @@
+# Python internals
+__pycache__/
+*.py[cod]
+
+# Virtual Environment (CRITICAL)
+.myenv/
+myenv/
+env/
+
+# Project Runtime files
+*.log
+demo_image.jpg
+downloaded_*
+*.tmp
+
+# VS Code settings
+.vscode/
