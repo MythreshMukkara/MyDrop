@@ -69,4 +69,3 @@ if __name__ == "__main__":
     except Exception as e:
         # If the app crashes completely, this catches it in the log
         print(f"CRITICAL CRASH: {e}")
-        input("Press Enter to exit...") # Keeps window open if console mode
