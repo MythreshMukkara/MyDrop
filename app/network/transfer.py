@@ -20,6 +20,8 @@ import socket
 import os
 import threading
 import time
+
+from pathlib import Path
 from PyQt6.QtCore import QObject, pyqtSignal
 
 # Configuration
@@ -131,19 +133,36 @@ class TransferManager(QObject):
     def _client_worker(self, sender_ip, filename):
         print(f"[Transfer] Connecting to {sender_ip}...")
         try:
+            # --- NEW SAVE LOGIC START ---
+            # 1. Get the dynamic path to Downloads/MyDrop
+            download_dir = Path.home() / "Downloads" / "MyDrop"
+            
+            # 2. Create the folder if it doesn't exist
+            download_dir.mkdir(parents=True, exist_ok=True)
+            
+            # 3. Create the full file path
+            save_path = download_dir / filename
+            # --- NEW SAVE LOGIC END ---
+
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.connect((sender_ip, TRANSFER_PORT))
-            print("[Transfer] Connected! Downloading...")
+            print(f"[Transfer] Connected! Saving to {save_path}")
 
-            with open(f"downloaded_{filename}", "wb") as f:
+            # Change 'downloaded_{filename}' to 'save_path' here:
+            with open(save_path, "wb") as f:
                 while True:
                     data = s.recv(BUFFER_SIZE)
                     if not data: break
                     f.write(data)
             
-            print(f"[Transfer] Download complete: downloaded_{filename}")
-            self.transfer_complete.emit(f"Saved as downloaded_{filename}")
+            print(f"[Transfer] Download complete.")
+            # Update the notification message
+            self.transfer_complete.emit(f"Saved to Downloads/MyDrop")
             s.close()
+
+        except Exception as e:
+            print(f"[Transfer] Client Error: {e}")
+            self.transfer_complete.emit(f"Download Failed: {str(e)}")
 
         except Exception as e:
             print(f"[Transfer] Client Error: {e}")
