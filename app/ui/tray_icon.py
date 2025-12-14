@@ -1,3 +1,30 @@
+"""
+=============================================================================
+MODULE: tray_icon.py
+DESCRIPTION: 
+    The central controller for the MyDrop application.
+    
+    It integrates all subsystems:
+    - User Interface: System Tray icon, Notifications, Overlay Window.
+    - Input: Global Hotkeys (Start/Stop, Accept).
+    - Core Logic: Gesture Engine (Camera), File Grabber (Clipboard/Zip).
+    - Networking: Discovery (UDP) and Transfer (TCP).
+
+    State Management:
+    - Idle: Waiting for user hotkey.
+    - Sender Mode: Camera active, looking for 'Grab' and 'Drop' gestures.
+    - Receiver Mode: Waiting for user to accept incoming file via hotkey.
+    - Busy: Currently zipping or transferring files.
+
+KEY METHODS:
+    - handle_hotkey: The master switch for toggling modes.
+    - on_gesture_event: Handles Sender logic (Grab File -> Broadcast Offer).
+    - on_offer_received: Handles Receiver logic (Incoming UDP -> Notification).
+    - accept_transfer: Initiates TCP download.
+=============================================================================
+"""
+
+#import statements
 from PyQt6.QtWidgets import QSystemTrayIcon, QMenu, QApplication, QStyle
 from PyQt6.QtGui import QAction, QColor
 from PyQt6.QtCore import QTimer
@@ -14,6 +41,7 @@ from app.core.file_grabber import FileGrabber
 
 class SystemTrayApp:
     def __init__(self):
+        """Initializes UI components, starts background threads (Listener, Discovery), and sets up signals."""
         self.app = QApplication(sys.argv)
         self.app.setQuitOnLastWindowClosed(False)
 
@@ -32,12 +60,12 @@ class SystemTrayApp:
         self.status_action.setEnabled(False)
         self.menu.addAction(self.status_action)
         self.menu.addSeparator()
-        self.quit_action = QAction("Quit AirGesture")
+        self.quit_action = QAction("Quit MyDrop")
         self.quit_action.triggered.connect(self.quit_app)
         self.menu.addAction(self.quit_action)
         self.tray_icon.setContextMenu(self.menu)
         
-        self.tray_icon.showMessage("AirGesture", "Ready. Ctrl+Alt+S to Send.", QSystemTrayIcon.MessageIcon.Information, 2000)
+        self.tray_icon.showMessage("MyDrop", "Ready. Ctrl+Alt+M to Send.", QSystemTrayIcon.MessageIcon.Information, 2000)
 
         # Input Listener
         self.listener = GlobalInputListener()
@@ -66,7 +94,9 @@ class SystemTrayApp:
 
     def handle_hotkey(self, key_type):
         """
-        Handles the distinct hotkeys from the listener.
+        Triggered by GlobalInputListener.
+        - 'TOGGLE': Starts/Stops the Sender Mode (Camera).
+        - 'ACCEPT': Accepts a pending file transfer if one exists.
         """
         print(f"[UI] Hotkey Triggered: {key_type}")
 
@@ -76,10 +106,10 @@ class SystemTrayApp:
                 self.accept_transfer()
             else:
                 # Optional: Tell user there is nothing to accept
-                self.tray_icon.showMessage("AirGesture", "No pending files to download.", QSystemTrayIcon.MessageIcon.Warning, 1000)
+                self.tray_icon.showMessage("MyDrop", "No pending files to download.", QSystemTrayIcon.MessageIcon.Warning, 1000)
             return
 
-        # 2. HANDLE TOGGLE (Ctrl+Alt+S)
+        # 2. HANDLE TOGGLE (Ctrl+Alt+M)
         if key_type == "TOGGLE":
             # If overlay is ON, turn it OFF
             if self.overlay.isVisible():
@@ -102,7 +132,9 @@ class SystemTrayApp:
 
     def on_offer_received(self, metadata, sender_ip):
         """
-        Triggered when a file is available.
+        Triggered when a valid UDP broadcast is detected.
+        - Ignores if app is busy.
+        - Otherwise, shows 'Incoming File' notification and starts 20s timeout.
         """
         # 1. CHECK IF BUSY
         if self.has_pending_offer or self.overlay.border_color == QColor(0, 0, 255):
@@ -139,7 +171,7 @@ class SystemTrayApp:
         self.overlay.border_color = QColor(0, 0, 255) # Blue
         self.overlay.show()
         self.overlay.update()
-        self.tray_icon.showMessage("AirGesture", "Downloading...", QSystemTrayIcon.MessageIcon.NoIcon, 1000)
+        self.tray_icon.showMessage("MyDrop", "Downloading...", QSystemTrayIcon.MessageIcon.NoIcon, 1000)
         
         if self.current_sender_ip and self.current_filename:
             self.transfer_manager.start_download(self.current_sender_ip, self.current_filename)
@@ -151,25 +183,39 @@ class SystemTrayApp:
         self.current_sender_ip = None
 
     def on_gesture_event(self, event_type):
+        """
+        The Core Logic for SENDER Mode.
+        - 'GRAB': Calls FileGrabber to zip/get files. Updates UI to Cyan.
+        - 'DROP': Starts TCP Server, Broadcasts UDP Offer, locks Camera.
+        """
         # SENDER LOGIC ONLY
         if event_type == "GRAB":
+            # SENDER: GRAB FILE
+            print("[UI] Sender: Attempting Smart Grab...")
+            
+            # 1. Notify User (Processing...)
+            # We force an update so the user sees this BEFORE the zip lag happens
+            self.tray_icon.showMessage("MyDrop", "Processing selection...", QSystemTrayIcon.MessageIcon.NoIcon, 1000)
+            QApplication.processEvents() # Force UI to draw the notification NOW
+            
+            # 2. Perform the Grab (Zipping happens here)
             filepath, error = FileGrabber.get_grabbed_content()
+            
             if filepath:
                 self.current_grabbed_file = filepath
-                self.overlay.border_color = QColor(0, 255, 255) # Cyan
+                filename = os.path.basename(filepath)
+                
+                # Update Visuals to Success (Cyan)
+                self.overlay.border_color = QColor(0, 255, 255) 
                 self.overlay.update()
-                self.tray_icon.showMessage("AirGesture", f"Grabbed: {os.path.basename(filepath)}", QSystemTrayIcon.MessageIcon.NoIcon, 1000)
+                self.tray_icon.showMessage("MyDrop", f"Ready to Send: {filename}", QSystemTrayIcon.MessageIcon.NoIcon, 2000)
+            
             else:
-                # FAILURE CASE - USE THE ERROR VARIABLE HERE
+                # Failure
                 print(f"[UI] Grab Failed: {error}")
-                
-                self.overlay.border_color = QColor(255, 0, 0) # Red
+                self.overlay.border_color = QColor(255, 0, 0)
                 self.overlay.update()
-                
-                # Show the specific error message to the user
                 self.tray_icon.showMessage("Grab Failed", error, QSystemTrayIcon.MessageIcon.Warning, 3000)
-                
-                # Reset to Green after 1 second
                 QTimer.singleShot(1000, self.reset_to_ready)
 
         elif event_type == "DROP":
@@ -182,7 +228,7 @@ class SystemTrayApp:
                 filename = os.path.basename(self.current_grabbed_file)
                 self.net_manager.broadcast_offer(filename, filesize)
                 
-                self.tray_icon.showMessage("AirGesture", "Transferring...", QSystemTrayIcon.MessageIcon.NoIcon, 2000)
+                self.tray_icon.showMessage("MyDrop", "Transferring...", QSystemTrayIcon.MessageIcon.NoIcon, 2000)
                 self.engine.stop() 
 
     def on_transfer_done(self, message):

@@ -1,3 +1,23 @@
+"""
+=============================================================================
+MODULE: file_grabber.py
+DESCRIPTION: 
+    Utility class for accessing selected files via the Windows Clipboard.
+    
+    Capabilities:
+    1. Clipboard Automation: Simulates 'Ctrl+C' to copy selected files.
+    2. Windows API Access: Uses pywin32 to read file paths directly from clipboard memory.
+    3. Smart Batching: 
+       - If 1 file: Returns path.
+       - If multiple files or folder: Automatically zips them into a temp file.
+    4. Error Handling: Skips locked/admin-only files during zipping to prevent crashes.
+
+USAGE:
+    filepath, error = FileGrabber.get_grabbed_content()
+=============================================================================
+"""
+
+#import statements
 import time
 import pyautogui
 import win32clipboard
@@ -13,6 +33,8 @@ class FileGrabber:
         Simulates Ctrl+C.
         - If 1 file selected: Returns path to that file.
         - If Multiple files or Folder selected: Zips them and returns path to Zip.
+        Orchestrates the grab process: Trigger Copy -> Read Clipboard -> Decide Zip vs Single.
+        Returns: (path_to_file_or_zip, error_message)
         """
         # 1. Simulate Ctrl+C
         try:
@@ -65,26 +87,42 @@ class FileGrabber:
 
     @staticmethod
     def _create_temp_zip(file_paths):
-        """Compresses list of paths into a temporary zip file"""
+        """Compresses list of paths into a temporary zip file, skipping errors."""
+        """
+        Iterates through file paths and compresses them into a temp ZIP.
+        Includes logic to handle recursion for folders and 'try-catch' for permission errors.
+        """
         try:
-            # Create a temp file like 'AirGesture_Batch.zip'
             temp_dir = tempfile.gettempdir()
-            zip_path = os.path.join(temp_dir, "AirGesture_Bundle.zip")
+            zip_path = os.path.join(temp_dir, "MyDrop_Bundle.zip")
             
             with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
                 for path in file_paths:
+                    # Case 1: It's a single File
                     if os.path.isfile(path):
-                        # Add file (arcname ensures we don't save the full C:/Users/... path)
-                        zipf.write(path, arcname=os.path.basename(path))
+                        try:
+                            zipf.write(path, arcname=os.path.basename(path))
+                        except Exception as e:
+                            print(f"[Zip Error] Skipped file {path}: {e}")
+
+                    # Case 2: It's a Folder
                     elif os.path.isdir(path):
-                        # Recursively add folder
                         root_len = len(os.path.dirname(path))
                         for root, dirs, files in os.walk(path):
                             for file in files:
                                 full_path = os.path.join(root, file)
-                                # Relative path inside zip
-                                rel_path = full_path[root_len:]
-                                zipf.write(full_path, arcname=rel_path)
+                                try:
+                                    # Logic to keep folder structure inside zip
+                                    rel_path = full_path[root_len:]
+                                    zipf.write(full_path, arcname=rel_path)
+                                except Exception as e:
+                                    # If a specific file is locked/denied, SKIP IT and continue
+                                    print(f"[Zip Error] Skipped {file}: {e}")
+            
+            return zip_path
+        except Exception as e:
+            print(f"[Zip Critical Fail] {e}")
+            return None
             
             return zip_path
         except Exception as e:

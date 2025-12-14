@@ -1,3 +1,22 @@
+"""
+=============================================================================
+MODULE: discovery.py
+DESCRIPTION: 
+    Handles "Device Discovery" using UDP Broadcasts (Port 50000).
+    
+    Mechanism:
+    - Sender: Broadcasts a JSON packet ("ANNOUNCE") containing filename, size, and sender name.
+    - Receiver: Listens on Port 50000. When it hears an "ANNOUNCE", it validates 
+      the message and notifies the main app.
+
+    Key Features:
+    - Self-Echo Filtering: Uses a unique UUID to ignore its own broadcasts.
+    - Wi-Fi Targeting: Attempts to calculate the specific Broadcast IP (x.x.x.255) 
+      to ensure delivery on strict routers.
+=============================================================================
+"""
+
+#import statements
 import socket
 import json
 import threading
@@ -7,7 +26,7 @@ from PyQt6.QtCore import QObject, pyqtSignal
 class DiscoveryManager(QObject):
     offer_received = pyqtSignal(dict, str) 
 
-    def __init__(self, device_name="AirGesture_User"):
+    def __init__(self, device_name="MyDrop_User"):
         super().__init__()
         self.device_name = device_name
         self.instance_id = str(uuid.uuid4())
@@ -18,7 +37,7 @@ class DiscoveryManager(QObject):
     def get_local_broadcast_ip(self):
         """
         Tricks the OS into revealing the real Wi-Fi IP, then calculates 
-        the broadcast address (e.g., 192.168.1.x -> 192.168.1.255)
+        the broadcast address
         """
         try:
             # We don't actually send data, just connecting to Google DNS helps us 
@@ -47,6 +66,7 @@ class DiscoveryManager(QObject):
             self.sock.close()
 
     def broadcast_offer(self, filename, filesize):
+        """Compiles metadata into JSON and blasts it to the network on Port 50000."""
         message = {
             "type": "ANNOUNCE",
             "sender": self.device_name,
@@ -92,7 +112,7 @@ class DiscoveryManager(QObject):
                     continue # Ignore my own echo
 
                 if message.get('type') == "ANNOUNCE":
-                    print(f"[Net] OH! Heard offer from {addr[0]}")
+                    print(f"[Net] Heard offer from {addr[0]}")
                     self.offer_received.emit(message, addr[0])
 
             except Exception as e:

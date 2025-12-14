@@ -1,3 +1,21 @@
+"""
+=============================================================================
+MODULE: transfer.py
+DESCRIPTION: 
+    Manages direct Point-to-Point file transfer using TCP Sockets (Port 50001).
+    
+    Classes:
+    - Server (Sender): Opens a socket, waits for connection, streams file data.
+      Includes a 'Kill Switch' to stop previous servers if a new gesture occurs.
+    - Client (Receiver): Connects to the Sender's IP, downloads stream, writes to disk.
+    
+    Safety:
+    - Uses SO_REUSEADDR to prevent 'Port In Use' errors.
+    - Implements timeouts (20s) to prevent hanging if no receiver connects.
+=============================================================================
+"""
+
+#import statements
 import socket
 import os
 import threading
@@ -20,7 +38,8 @@ class TransferManager(QObject):
 
     # --- SENDER LOGIC ---
     def start_server(self, filepath):
-        """Starts a TCP server. Kills any existing server first."""
+        """Starts a TCP server. Kills any existing server first.
+        Then starts a new thread to host the given file."""
         
         # 1. STOP previous server if it's running
         self.stop_server()
@@ -43,6 +62,8 @@ class TransferManager(QObject):
                 pass
 
     def _server_worker(self, filepath):
+        """Blocking loop that waits for client connection and pipes file data."""
+
         print(f"[Transfer] Server starting for {filepath}...")
         try:
             self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

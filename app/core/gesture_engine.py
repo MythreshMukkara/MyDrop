@@ -1,3 +1,25 @@
+"""
+=============================================================================
+MODULE: gesture_engine.py
+DESCRIPTION: 
+    Encapsulates all MediaPipe and OpenCV logic.
+    
+    Responsibilities:
+    1. Camera Management: Safely opens/releases the webcam.
+    2. Hand Tracking: Uses MediaPipe Hands to detect landmarks.
+    3. Gesture Recognition: Analyzes finger coordinates (Index & Middle Tip vs PIP)
+       to classify 'FIST' (Grab) vs 'OPEN' (Drop) states.
+    4. Event Debouncing: Prevents rapid-fire signal spamming.
+
+SIGNALS:
+    - gesture_detected(str): Emits 'GRAB' or 'DROP'.
+
+THREADING:
+    Runs in a separate QThread to prevent freezing the UI during video processing.
+=============================================================================
+"""
+#import statements
+
 import cv2
 import mediapipe as mp
 import time
@@ -63,7 +85,14 @@ class GestureEngine(QObject):
             self.cap.release()
 
     def _process_loop(self):
-        """The Main AI Loop (Runs in background)"""
+        """
+        The main infinite loop running in the background thread.
+        - Reads frame from Camera.
+        - Passes frame to MediaPipe.
+        - Determines logical gesture state.
+        - Emits signal only on state *change* (Edge Detection).
+        - Handles errors (e.g., Camera disconnect) gracefully.
+        """
         print("[Core] Starting Gesture Loop...")
         
         # Open Camera

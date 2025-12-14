@@ -1,3 +1,22 @@
+"""
+=============================================================================
+MODULE: overlay.py
+DESCRIPTION: 
+    A transparent, click-through window that draws a colored border around the screen.
+    
+    Purpose: Provides visual feedback of the application state without obstructing work.
+    - Green: Ready / Listening.
+    - Cyan: File Grabbed.
+    - Purple: Broadcasting / Waiting.
+    - Blue: Downloading.
+    - Red: Error / Timeout.
+    - Yellow: Incoming Offer.
+
+    Tech: Uses PyQt6 WA_TransparentForMouseEvents to ensure it doesn't block clicks.
+=============================================================================
+"""
+
+#import statements
 from PyQt6.QtWidgets import QWidget, QApplication
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QPainter, QColor, QPen
