@@ -108,14 +108,21 @@ class TransferManager(QObject):
             self.transfer_complete.emit("File Sent Successfully!")
             client_socket.close()
 
-        # --- FIX: Handle Timeout ---
+        # --- Handle Timeout ---
+
         except socket.timeout:
             print("[Transfer] Timeout: No receiver connected.")
-            self.transfer_complete.emit("No Receiver Found (Timeout)")
+            self.transfer_complete.emit("No Receiver Found")
 
-        except OSError:
-            print("[Transfer] Server stopped (likely cancelled).")
-            
+        except OSError as e:
+            if self.is_running:
+                print(f"[Transfer] System Error: {e}")
+                # This ensures the Red Notification appears!
+                self.transfer_complete.emit(f"Error: {e}") 
+            else:
+                # Only stay silent if we stopped it manually
+                print("[Transfer] Server stopped manually.")
+
         except Exception as e:
             print(f"[Transfer] Server Error: {e}")
             self.transfer_complete.emit(f"Error: {str(e)}")

@@ -232,18 +232,25 @@ class SystemTrayApp:
                 self.engine.stop() 
 
     def on_transfer_done(self, message):
-        title = "Transfer Update"
+        print(f"[UI] Transfer Done Signal Received: {message}") # Debug Print
+
+        # Default to Success (Green)
+        title = "Transfer Successful"
         color = QColor(0, 255, 0)
         icon = QSystemTrayIcon.MessageIcon.Information
         
-        if "No Receiver" in message or "Error" in message:
-            title = "Failed"
-            color = QColor(255, 0, 0)
+        # Check for Failure
+        if "No Receiver Found" in message or "Error" in message:
+            title = "Transfer Failed"
+            color = QColor(255, 0, 0) # Red
             icon = QSystemTrayIcon.MessageIcon.Warning
 
+        # Update Overlay
         self.overlay.border_color = color
         self.overlay.update()
+        # Show the Notification
         self.tray_icon.showMessage(title, message, icon, 3000)
+        # Shutdown after 2 seconds
         QTimer.singleShot(2000, self.full_shutdown)
 
     def full_shutdown(self):

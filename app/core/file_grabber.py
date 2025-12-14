@@ -36,12 +36,19 @@ class FileGrabber:
         Orchestrates the grab process: Trigger Copy -> Read Clipboard -> Decide Zip vs Single.
         Returns: (path_to_file_or_zip, error_message)
         """
+        # --- Clear Clipboard First ---
+        try:
+            win32clipboard.OpenClipboard()
+            win32clipboard.EmptyClipboard() # Wipe old data
+            win32clipboard.CloseClipboard()
+        except Exception:
+            pass
+
         # 1. Simulate Ctrl+C
         try:
             pyautogui.hotkey('ctrl', 'c')
             time.sleep(0.5) 
         except KeyboardInterrupt:
-            print("[FileGrabber] WARNING: You tried to grab the Terminal!")
             return None, "Don't grab the Terminal! Click a file first."
         except Exception as e:
             return None, f"Keyboard Error: {e}"
@@ -62,17 +69,16 @@ class FileGrabber:
 
         try:
             if win32clipboard.IsClipboardFormatAvailable(win32con.CF_HDROP):
-                # data is a TUPLE of all selected file paths
                 file_paths = win32clipboard.GetClipboardData(win32con.CF_HDROP)
             else:
-                error_msg = "No files found (Did you copy text?)"
+                error_msg = "Nothing selected (Clipboard Empty)"
         except Exception as e:
             error_msg = f"Read Error: {e}"
         finally:
             win32clipboard.CloseClipboard()
 
         if not file_paths:
-            return None, error_msg or "Clipboard Empty"
+            return None, error_msg
 
         # 4. DECISION LOGIC: Single File vs. Batch
         # If it's a single file (not a folder), return it directly
