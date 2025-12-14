@@ -115,12 +115,11 @@ class TransferManager(QObject):
             self.transfer_complete.emit("No Receiver Found")
 
         except OSError as e:
+            # FIX: Only stay silent if we INTENTIONALLY stopped the server.
             if self.is_running:
                 print(f"[Transfer] System Error: {e}")
-                # This ensures the Red Notification appears!
                 self.transfer_complete.emit(f"Error: {e}") 
             else:
-                # Only stay silent if we stopped it manually
                 print("[Transfer] Server stopped manually.")
 
         except Exception as e:
